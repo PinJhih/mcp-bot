@@ -7,12 +7,19 @@ from .logger import logger
 
 
 # load .env and extract API key
-load_dotenv()
+load_dotenv("../.env")
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 genai.configure(api_key=GOOGLE_API_KEY)
 
 
 class Model:
+    def echo(self, message: str) -> dict[str, str]:
+        """
+        print the message
+        """
+        logger.info(message)
+        return {"message": "OK!"}
+
     def __init__(self, bot_name, model_name: str = "gemini-1.5-flash") -> None:
         self.model_name = model_name
 
@@ -35,8 +42,9 @@ class Model:
             {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
         ]
 
+        self.tools = [self.echo]
         self.model = self.load_model()
-        self.chat = self.model.start_chat()
+        self.chat = self.model.start_chat(enable_automatic_function_calling=True)
 
     def load_model(self) -> genai.GenerativeModel:
         return genai.GenerativeModel(
@@ -44,6 +52,7 @@ class Model:
             safety_settings=self.safety_settings,
             generation_config=self.generation_config,
             system_instruction=self.sys_instruction,
+            tools=self.tools,
         )
 
     def send_message(self, message):

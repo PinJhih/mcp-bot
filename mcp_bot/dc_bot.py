@@ -23,8 +23,10 @@ class DiscordBot:
         self.model = None
 
     async def on_ready(self):
-        logger.info(f"Logged in as {self.client.user.name} (ID: {self.client.user.id})")
-        print("-" * 80)
+        logger.info(
+            f"Logged in as {self.client.user.name} (ID: {self.client.user.id})\n"
+            + "=" * 96
+        )
         self.model = Model(self.client.user.name)
 
     async def on_message(self, message):
