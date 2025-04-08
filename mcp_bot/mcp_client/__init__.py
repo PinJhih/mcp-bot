@@ -22,7 +22,6 @@ class Client:
 
         for name, srv_config in self.config["mcpServers"].items():
             self.servers[name] = ServerConnection(name, srv_config)
-        asyncio.create_task(self.start())
 
     def list_servers(self):
         return list(self.servers.keys())

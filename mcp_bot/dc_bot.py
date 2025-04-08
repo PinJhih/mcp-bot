@@ -4,11 +4,12 @@ import discord
 from dotenv import load_dotenv
 
 from .logger import logger
-from .gemini_client import Model
+from .llm_client.open_router_client import OpenRouterChat
 
 
 load_dotenv("../.env")
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
+OPEN_ROUTER_API_KEY = os.getenv("OPEN_ROUTER_API_KEY")
 
 
 class DiscordBot:
@@ -19,15 +20,17 @@ class DiscordBot:
         self.client.event(self.on_ready)
         self.client.event(self.on_message)
 
-        # initialize after DC client is ready
-        self.model = None
+        self.chat = OpenRouterChat(
+            api_key=OPEN_ROUTER_API_KEY,
+            model="openai/gpt-3.5-turbo",
+        )
 
     async def on_ready(self):
+        await self.chat.mcp_client.start()
         logger.info(
             f"Logged in as {self.client.user.name} (ID: {self.client.user.id})\n"
             + "=" * 96
         )
-        self.model = Model(self.client.user.name)
 
     async def on_message(self, message):
         # extract fields from message
@@ -39,13 +42,15 @@ class DiscordBot:
         if not self.client.user.mentioned_in(message) or author == self.client.user:
             return
 
-        # logs the message
         log = f'From "{author}" in channel "{channel}"'
         logger.info(log)
 
-        content = content.replace(f"<@{self.client.user.id}>", self.client.user.name)
-        user_message = [f"From <@{author.id}> in {channel.id}\n{content}"]
-        response = self.model.send_message(user_message)
+        # content = content.replace(f"<@{self.client.user.id}>", self.client.user.name)
+        # user_message = f"From <@{author.id}> in {channel.id}\n{content}"
+
+        content = content.replace(f"<@{self.client.user.id}>", "")
+        user_message = f"{content}"
+        response = await self.chat.send_message(user_message)
         await message.channel.send(response)
 
     def run(self):
