@@ -20,8 +20,9 @@ class Tool:
         self.description: str = description
         self.input_schema: dict[str, Any] = input_schema
 
-    def format_for_llm(self) -> str:
-        """Format tool information for LLM.
+    def __str__(self) -> str:
+        """
+        Format tool information for LLM.
 
         Returns:
             A formatted string describing the tool.
@@ -88,7 +89,8 @@ class ServerConnection:
             raise
 
     async def list_tool(self):
-        """List available tools from the server.
+        """
+        List available tools from the server.
 
         Returns:
             A list of available tools.
@@ -138,7 +140,6 @@ class ServerConnection:
             try:
                 logger.info(f"Executing {tool_name}...")
                 result = await self.session.call_tool(tool_name, arguments)
-
                 return result
 
             except Exception as e:

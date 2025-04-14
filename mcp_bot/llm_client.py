@@ -2,11 +2,11 @@ import json
 
 from openai import OpenAI
 
-from ..logger import logger
-from ..mcp_client import Client
+from .logger import logger
+from .mcp_client import MCPClient
 
 
-class OpenRouterChat:
+class OpenAIChat:
     """
     A client for interacting with an LLM via the OpenAI API (OpenRouter).
 
@@ -15,9 +15,10 @@ class OpenRouterChat:
 
     def __init__(
         self,
-        api_key:str,
-        model:str,
-        base_url:str="https://openrouter.ai/api/v1",
+        api_key: str,
+        model: str,
+        mcp_config_path: str,
+        base_url: str = "https://openrouter.ai/api/v1",
         site_url=None,
         site_name=None,
     ):
@@ -26,10 +27,11 @@ class OpenRouterChat:
 
         Args:
             api_key (str): The API key for OpenRouter.
+            model (str): The LLM model to use.
+            mcp_config_path (str): The path to the MCP config file (servers_config.json).
             base_url (str, optional): The base URL of the OpenRouter API. Defaults to "https://openrouter.ai/api/v1".
             site_url (str, optional): Your site URL for rankings on openrouter.ai. Defaults to None.
             site_name (str, optional): Your site title for rankings on openrouter.ai. Defaults to None.
-            model (str, optional): The LLM model to use.
         """
         self.api_key = api_key
         self.base_url = base_url
@@ -44,7 +46,7 @@ class OpenRouterChat:
         # TODO: Initialize conversation history. (system instructions)
         self.conversation_history = []
 
-        self.mcp_client = Client()
+        self.mcp_client = MCPClient(mcp_config_path)
         self.tools = [
             {
                 "type": "function",
@@ -95,11 +97,24 @@ class OpenRouterChat:
             "execute_tool": self.execute_tool,
         }
 
+    async def start(self) -> None:
+        # init all MCP Server connections
+        await self.mcp_client.start()
+
+        # list all servers and append to conversation history
+        mcp_servers = self.mcp_client.list_servers()
+        self.conversation_history.append(
+            {
+                "role": "system",
+                "content": f"Available MCP servers: {str(mcp_servers)}",
+            }
+        )
+
     async def list_tools(self, server_name: str) -> str:
         tools = await self.mcp_client.list_tools(server_name)
         result = ""
         for tool in tools:
-            result += f"\n{tool.format_for_llm()}"
+            result += f"\n{str(tool)}"
         return result
 
     async def execute_tool(self, server_name: str, tool_name: str, args: str) -> str:
@@ -127,8 +142,8 @@ class OpenRouterChat:
             str: The response from the LLM.  Returns None if there's an error.
         """
 
-        message = {"role": "user", "content": content}
-        self.conversation_history.append(message)  # Add user message to history
+        # Add user message to history
+        self.conversation_history.append({"role": "user", "content": content})
 
         try:
             completion_kwargs = {
@@ -148,10 +163,8 @@ class OpenRouterChat:
                 # no tool call, return model's message
                 response_content = response_message.content
 
-                # append model message
-                self.conversation_history.append(
-                    {"role": "assistant", "content": response_content}
-                )
+                # append model message to history
+                self.conversation_history.append(response_message)
                 return response_content
             else:
                 tool_responses = []
@@ -171,6 +184,7 @@ class OpenRouterChat:
                         )
                         try:
                             function_result = await function_to_call(**function_args)
+                            function_result = str(function_result)
                         except Exception as e:
                             function_result = (
                                 f"Error calling function {function_name}: {e}"
