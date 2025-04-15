@@ -43,28 +43,16 @@ class OpenAIChat:
             api_key=self.api_key,
         )
 
-        # TODO: Initialize conversation history. (system instructions)
+        self.system_prompt = (
+            "You are a helpful assistant with access to MCP(Model Context Protocol) Servers."
+            "MCP is a powerful protocol allows you to interact with other tools. MCP Servers provide different tools."
+            "You can use the function execute_tool, with 'server name', 'tool name' and 'arguments', to access other tools."
+            "After receiving a tool's response, transform the raw data into a natural, conversational response."
+        )
         self.conversation_history = []
 
         self.mcp_client = MCPClient(mcp_config_path)
         self.tools = [
-            {
-                "type": "function",
-                "function": {
-                    "name": "list_tools",
-                    "description": "List all tools of a MCP server",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "server_name": {
-                                "type": "string",
-                                "description": "The name of MCP Server.",
-                            },
-                        },
-                        "required": ["server_name"],
-                    },
-                },
-            },
             {
                 "type": "function",
                 "function": {
@@ -93,20 +81,28 @@ class OpenAIChat:
         ]
 
         self.function_mapping = {
-            "list_tools": self.list_tools,
             "execute_tool": self.execute_tool,
         }
 
     async def start(self) -> None:
-        # init all MCP Server connections
+        """Initialize all MCP Server connections"""
         await self.mcp_client.start()
 
-        # list all servers and append to conversation history
+        # list all servers
         mcp_servers = self.mcp_client.list_servers()
+
+        # list all tools of each server
+        mcp_tools = ""
+        for server in self.mcp_client.list_servers():
+            tools = f"Tools of {server}:\n"
+            for tool in await self.mcp_client.list_tools(server):
+                tools += f"{tool}\n"
+            mcp_tools += f"{tools}"
+
         self.conversation_history.append(
             {
                 "role": "system",
-                "content": f"Available MCP servers: {str(mcp_servers)}",
+                "content": f"{self.system_prompt}\nAvailable MCP servers: {str(mcp_servers)}\n{mcp_tools}",
             }
         )
 
