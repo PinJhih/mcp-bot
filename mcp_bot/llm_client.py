@@ -1,4 +1,5 @@
 import json
+import asyncio
 
 from openai import OpenAI
 
@@ -30,8 +31,8 @@ class OpenAIChat:
             model (str): The LLM model to use.
             mcp_config_path (str): The path to the MCP config file (servers_config.json).
             base_url (str, optional): The base URL of the OpenRouter API. Defaults to "https://openrouter.ai/api/v1".
-            site_url (str, optional): Your site URL for rankings on openrouter.ai. Defaults to None.
-            site_name (str, optional): Your site title for rankings on openrouter.ai. Defaults to None.
+            site_url (str, optional): Your site URL for rankings on OpenRouter.ai. Defaults to None.
+            site_name (str, optional): Your site title for rankings on OpenRouter.ai. Defaults to None.
         """
         self.api_key = api_key
         self.base_url = base_url
@@ -52,7 +53,7 @@ class OpenAIChat:
         self.conversation_history = []
 
         self.mcp_client = MCPClient(mcp_config_path)
-        self.tools = [
+        self.mcp_functions = [
             {
                 "type": "function",
                 "function": {
@@ -147,7 +148,7 @@ class OpenAIChat:
                 "extra_body": {},
                 "model": self.model,
                 "messages": self.conversation_history,
-                "tools": self.tools,
+                "tools": self.mcp_functions,
                 "tool_choice": "auto",
             }
 
@@ -225,3 +226,131 @@ class OpenAIChat:
     def clear_conversation_history(self):
         """Clears the conversation history."""
         self.conversation_history = []
+
+
+class StreamingChat(OpenAIChat):
+    def __init__(
+        self,
+        api_key,
+        model,
+        mcp_config_path,
+        base_url="https://openrouter.ai/api/v1",
+        site_url=None,
+        site_name=None,
+    ):
+        super().__init__(api_key, model, mcp_config_path, base_url, site_url, site_name)
+        self.system_prompt += (
+            "If you want to use MCP tool, your response should start with <MCP_CALL>, and a JSON string in following format.\n"
+            "{"
+            '    "server": <server_name>,'
+            '    "tool": <tool_name>,'
+            '    "args": <JSON_string_args>'
+            "}\n"
+            "IMPORTANT: DO NOT contain any other message if you want to use other tool"
+        )
+
+    async def start(self):
+        await self.mcp_client.start()
+
+        mcp_tools = ""
+        mcp_servers = self.mcp_client.list_servers()
+        for server in self.mcp_client.list_servers():
+            tools = f"Tools of {server}:\n"
+            for tool in await self.mcp_client.list_tools(server):
+                tools += f"{tool}\n"
+            mcp_tools += f"{tools}"
+
+        self.conversation_history.append(
+            {
+                "role": "system",
+                "content": f"{self.system_prompt}\nAvailable MCP servers: {str(mcp_servers)}\n{mcp_tools}",
+            }
+        )
+
+    async def send_message(self, content):
+        """
+        Sends a message to the LLM and receives the response in streaming mode.
+
+        Args:
+            content: The text content to send to the LLM.
+
+        Yields:
+            Each text fragment received from the LLM.
+
+        Raises:
+            Exception: Exceptions may be raised if the connection to the LLM fails or other errors occur.
+                       Handle these exceptions appropriately on the calling side.
+        """
+
+        # Add user message to history
+        self.conversation_history.append({"role": "user", "content": content})
+
+        try:
+            completion_kwargs = {
+                "extra_headers": self._build_extra_headers(),
+                "extra_body": {},
+                "model": self.model,
+                "messages": self.conversation_history,
+                "stream": True,
+            }
+
+            # send to model
+            response = self.client.chat.completions.create(**completion_kwargs)
+            full_content = ""
+
+            for chunk in response:
+                if chunk.choices:
+                    content = chunk.choices[0].delta.content
+                    if content is not None:
+                        full_content += content
+                        yield content
+                        await asyncio.sleep(0) # force flush the buffer
+            self.conversation_history.append(
+                {"role": "assistant", "content": full_content}
+            )
+
+            if full_content.startswith("<MCP_CALL>"):
+                req = json.loads(
+                    full_content.replace("<MCP_CALL>", "").replace("</MCP_CALL>", "")
+                )
+                mcp_server = req["server"]
+                mcp_tool = req["tool"]
+                args = req["args"]
+
+                # try mcp tool call
+                try:
+                    res = await self.mcp_client.execute_tool(mcp_server, mcp_tool, args)
+                    self.conversation_history.append(
+                        {"role": "user", "content": f"The tool result: {str(res)}"}
+                    )
+                    yield "</MCP_CALL>\n"
+                except Exception as e:
+                    self.conversation_history.append(
+                        {"role": "tool", "content": f"Error: {e}"}
+                    )
+
+                # Send tool result to LLM
+                second_res = self.client.chat.completions.create(
+                    extra_headers=self._build_extra_headers(),
+                    extra_body={},
+                    model=self.model,
+                    messages=self.conversation_history,
+                    stream=True,
+                )
+
+                full_content = ""
+                for chunk in second_res:
+                    if chunk.choices:
+                        content = chunk.choices[0].delta.content
+                        if content is not None:
+                            full_content += content
+                            yield content
+                            await asyncio.sleep(0) # force flush the buffer
+                
+                self.conversation_history.append(
+                    {"role": "assistant", "content": full_content}
+                )
+
+        except Exception as e:
+            logger.error(f"Error communicating with LLM: {e}")
+            return
