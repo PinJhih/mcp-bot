@@ -2,11 +2,6 @@
 
 ## Setup
 
-在專案的最上層建立 .env 設定檔，加入 Open Router 的 API Key
-```bash
-OPEN_ROUTER_API_KEY=<YOUR_KEY>
-```
-
 安裝 dependencies
 ```bash
 pip install -r requirements.txt
@@ -36,7 +31,12 @@ pip install -r requirements.txt
 
 ## Run
 
-在 Terminal 中聊天
+啟動 MCP API 服務
+```bash
+uvicorn api:app
 ```
-python3 run.py
-```
+- 服務會運行在 port 8000
+
+## Client Example
+
+參考 [example.py](./example.py)，使用 RESTful 的形式存取其他 MCP 功能
