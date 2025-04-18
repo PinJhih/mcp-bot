@@ -2,7 +2,7 @@ import json
 from typing import Any
 
 from .utils import ServerConnection, Tool
-from ..logger import logger
+from .logger import logger
 
 
 def load_json(path):

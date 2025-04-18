@@ -1,6 +1,4 @@
-# MCP Bot
-
-## Setup
+# MCP Client
 
 安裝 dependencies
 ```bash
@@ -29,14 +27,20 @@ pip install -r requirements.txt
 }
 ```
 
-## Run
+## Run API Service
 
-啟動 MCP API 服務
+啟動 MCP Service
 ```bash
-uvicorn api:app
+uvicorn mcp-service:app
 ```
 - 服務會運行在 port 8000
 
-## Client Example
+### Client Example
 
-參考 [example.py](./example.py)，使用 RESTful 的形式存取其他 MCP 功能
+參考 [mcp-client.py](./mcp-client.py)，使用 RESTful 的形式存取 MCP Service
+
+## Run Chat Demo
+
+- [chat-demo.py](./chat-demo.py) 是完整的 MCP 聊天應用
+  - 串接 ChatGPT 3.5 和 [mcp_client](./mcp_client) 模組
+- 直接使用 terminal 當作聊天介面

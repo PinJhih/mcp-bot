@@ -4,7 +4,7 @@ import asyncio
 from openai import OpenAI
 
 from .logger import logger
-from .mcp_client import MCPClient
+from . import MCPClient
 
 
 class OpenAIChat:

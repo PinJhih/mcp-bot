@@ -5,7 +5,7 @@ from typing import Dict
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
-from mcp_bot.mcp_client import MCPClient
+from mcp_client import MCPClient
 
 app = FastAPI()
 mcp_client = MCPClient(Path("./servers_config.json").resolve())
