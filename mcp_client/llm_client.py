@@ -241,12 +241,13 @@ class StreamingChat(OpenAIChat):
         super().__init__(api_key, model, mcp_config_path, base_url, site_url, site_name)
         self.system_prompt += (
             "If you want to use MCP tool, your response should start with <MCP_CALL>, and a JSON string in following format.\n"
-            "{"
-            '    "server": <server_name>,'
-            '    "tool": <tool_name>,'
-            '    "args": <JSON_string_args>'
-            "}\n"
-            "IMPORTANT: DO NOT contain any other message if you want to use other tool"
+            "<MCP_CALL>{"
+            '  "server": <server_name>,'
+            '  "tool": <tool_name>,'
+            '  "args": <JSON_string_args>'
+            "}</MCP_CALL>\n"
+            "IMPORTANT: DO NOT contain any other message if you want to use other tool."
+            "If you want many MCP calls at once, just use <MCP_CALL>...</MCP_CALL><MCP_CALL>...</MCP_CALL>..."
         )
 
     async def start(self):
@@ -304,30 +305,41 @@ class StreamingChat(OpenAIChat):
                     if content is not None:
                         full_content += content
                         yield content
-                        await asyncio.sleep(0) # force flush the buffer
+                        await asyncio.sleep(0)  # force flush the buffer
             self.conversation_history.append(
-                {"role": "assistant", "content": full_content}
+                {
+                    "role": "assistant",
+                    "content": full_content.replace("<MCP_CALL>", "").replace(
+                        "</MCP_CALL>", ""
+                    ),
+                }
             )
 
             if full_content.startswith("<MCP_CALL>"):
-                req = json.loads(
-                    full_content.replace("<MCP_CALL>", "").replace("</MCP_CALL>", "")
-                )
-                mcp_server = req["server"]
-                mcp_tool = req["tool"]
-                args = req["args"]
+                mcp_calls = full_content.split("</MCP_CALL>")
+                tool_result = ""
+                for mcp_call in mcp_calls:
+                    if not mcp_call.startswith("<MCP_CALL>"):
+                        continue
+                    req = json.loads(
+                        mcp_call.replace("<MCP_CALL>", "").replace("</MCP_CALL>", "")
+                    )
+                    mcp_server = req["server"]
+                    mcp_tool = req["tool"]
+                    args = req["args"]
 
-                # try mcp tool call
-                try:
-                    res = await self.mcp_client.execute_tool(mcp_server, mcp_tool, args)
-                    self.conversation_history.append(
-                        {"role": "user", "content": f"The tool result: {str(res)}"}
-                    )
-                    yield "</MCP_CALL>\n"
-                except Exception as e:
-                    self.conversation_history.append(
-                        {"role": "tool", "content": f"Error: {e}"}
-                    )
+                    # try mcp tool call
+                    try:
+                        res = await self.mcp_client.execute_tool(
+                            mcp_server, mcp_tool, args
+                        )
+                        tool_result += f"{res}\n"
+                    except Exception as e:
+                        tool_result += f"Error: {e}\n"
+
+                self.conversation_history.append(
+                    {"role": "user", "content": f"The tool result: {tool_result}"}
+                )
 
                 # Send tool result to LLM
                 second_res = self.client.chat.completions.create(
@@ -345,12 +357,11 @@ class StreamingChat(OpenAIChat):
                         if content is not None:
                             full_content += content
                             yield content
-                            await asyncio.sleep(0) # force flush the buffer
-                
+                            await asyncio.sleep(0)  # force flush the buffer
+
                 self.conversation_history.append(
                     {"role": "assistant", "content": full_content}
                 )
-
         except Exception as e:
             logger.error(f"Error communicating with LLM: {e}")
             return
