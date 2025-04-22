@@ -1,5 +1,5 @@
+import json
 import asyncio
-from pathlib import Path
 from typing import Dict
 
 from fastapi import FastAPI
@@ -7,8 +7,15 @@ from fastapi.responses import JSONResponse
 
 from mcp_client import MCPClient
 
+def load_config(path:str):
+    with open(path) as config_file:
+        mcp_config = json.load(config_file)
+        return mcp_config
+
+mcp_config = load_config("./servers_config.json")
+
 app = FastAPI()
-mcp_client = MCPClient(Path("./servers_config.json").resolve())
+mcp_client = MCPClient(mcp_config)
 
 asyncio.create_task(mcp_client.start())
 
