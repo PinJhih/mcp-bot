@@ -1,7 +1,8 @@
 import os
 import asyncio
 import shutil
-from typing import Any
+from typing import Any, Annotated
+from pydantic.networks import AnyUrl, UrlConstraints
 from contextlib import AsyncExitStack
 
 from mcp import ClientSession, StdioServerParameters
@@ -41,7 +42,34 @@ class Tool:
             f"Tool: {self.name}\n"
             + f"Description: {self.description}\n"
             + f"Arguments:\n"
-            + f"{chr(10).join(args_desc)}"
+            + f"{chr(10).join(args_desc)}\n"
+        )
+
+
+class Resource:
+    """Represents a resource with its properties and formatting."""
+
+    def __init__(
+        self,
+        uri: AnyUrl | str,
+        name: str,
+        description: str | None = None,
+        mimeType: str | None = None,
+        size: int | None = None,
+    ) -> None:
+        self.uri = AnyUrl(uri)
+        self.name: str = name
+        self.description: str = description
+        self.mimeType = mimeType
+        self.size = size
+
+    def __str__(self):
+        return (
+            f"Resource: {self.name}\n"
+            + f"URI: {str(self.uri)}\n"
+            + f"Description: {self.description}\n"
+            + f"MIME Type: {self.mimeType}\n"
+            + f"Size: {self.size}\n"
         )
 
 
@@ -89,21 +117,12 @@ class ServerConnection:
             raise
 
     async def list_tool(self):
-        """
-        List available tools from the server.
-
-        Returns:
-            A list of available tools.
-
-        Raises:
-            RuntimeError: If the server is not initialized.
-        """
+        """List available tools from the server."""
         if not self.session:
             raise RuntimeError(f"Server {self.name} not initialized")
 
-        tools_response = await self.session.list_tools()
         tools = []
-
+        tools_response = await self.session.list_tools()
         for item in tools_response:
             if isinstance(item, tuple) and item[0] == "tools":
                 for tool in item[1]:
@@ -117,21 +136,7 @@ class ServerConnection:
         retries: int = 2,
         delay: float = 1.0,
     ) -> Any:
-        """Execute a tool with retry mechanism.
-
-        Args:
-            tool_name: Name of the tool to execute.
-            arguments: Tool arguments.
-            retries: Number of retry attempts.
-            delay: Delay between retries in seconds.
-
-        Returns:
-            Tool execution result.
-
-        Raises:
-            RuntimeError: If server is not initialized.
-            Exception: If tool execution fails after all retries.
-        """
+        """Execute a tool with retry mechanism."""
         if not self.session:
             raise RuntimeError(f"Server {self.name} not initialized")
 
@@ -153,6 +158,34 @@ class ServerConnection:
                 else:
                     logger.error("Max retries reached. Failing.")
                     raise
+
+    async def list_resources(self):
+        """List available resources from the server."""
+        if not self.session:
+            raise RuntimeError(f"Server {self.name} not initialized")
+
+        resources = []
+        resources_response = await self.session.list_resources()
+        for item in resources_response:
+            if isinstance(item, tuple) and item[0] == "resources":
+                for resource in item[1]:
+                    resources.append(
+                        Resource(
+                            resource.uri,
+                            resource.name,
+                            resource.description,
+                            resource.mimeType,
+                            resource.size,
+                        )
+                    )
+        return resources
+
+    async def read_resource(self, uri: AnyUrl | str):
+        if not self.session:
+            raise RuntimeError(f"Server {self.name} not initialized")
+        uri = AnyUrl(uri)
+        res = await self.session.read_resource(uri)
+        return res
 
     async def cleanup(self) -> None:
         """Clean up server resources."""

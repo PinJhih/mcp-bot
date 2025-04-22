@@ -37,6 +37,15 @@ class MCPClient:
         )
         return result
 
+    async def list_resource(self, server_name: str):
+        logger.info(f"List resources of MCP server '{server_name}'")
+        resource_list = await self.servers[server_name].list_resources()
+        return resource_list
+
+    async def read_resource(self, server_name: str, res_name: str):
+        resource = await self.servers[server_name].read_resource(res_name)
+        return str(resource)
+
     async def clean_all(self):
         for server in self.servers.values():
             await server.cleanup()
