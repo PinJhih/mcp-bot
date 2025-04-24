@@ -1,10 +1,22 @@
 import json
 import asyncio
+from datetime import datetime
 
 from openai import OpenAI
 
 from .logger import logger
 from . import MCPClient
+
+
+def get_today():
+    weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+
+    today = datetime.today()
+    formatted_date = today.strftime("%Y/%m/%d")
+    weekday = weekdays[today.weekday()]
+
+    result = f"{formatted_date} ({weekday}) +08"
+    return result
 
 
 class OpenAIChat:
@@ -49,6 +61,7 @@ class OpenAIChat:
             "MCP is a powerful protocol allows you to interact with other tools. MCP Servers provide different tools."
             "You can use the function execute_tool, with 'server name', 'tool name' and 'arguments', to access other tools."
             "After receiving a tool's response, transform the raw data into a natural, conversational response."
+            f"Users in the timezone Asia/Taipei. Today is {get_today()}"
         )
         self.conversation_history = []
 
@@ -318,7 +331,10 @@ class StreamingChat(OpenAIChat):
             if full_content.startswith("<MCP_CALL>"):
                 mcp_calls = full_content.split("</MCP_CALL>")
                 tool_result = ""
+
+                logger.info(f"Execute {len(mcp_calls) - 1} MCP calls")
                 for mcp_call in mcp_calls:
+                    mcp_call = mcp_call.strip()
                     if not mcp_call.startswith("<MCP_CALL>"):
                         continue
                     req = json.loads(
@@ -336,6 +352,8 @@ class StreamingChat(OpenAIChat):
                         tool_result += f"{res}\n"
                     except Exception as e:
                         tool_result += f"Error: {e}\n"
+
+                    await asyncio.sleep(0.25)
 
                 self.conversation_history.append(
                     {"role": "user", "content": f"The tool result: {tool_result}"}
